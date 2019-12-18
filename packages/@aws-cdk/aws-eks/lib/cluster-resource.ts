@@ -1,7 +1,9 @@
-import cfn = require('@aws-cdk/aws-cloudformation');
-import iam = require('@aws-cdk/aws-iam');
-import { Construct, Token } from '@aws-cdk/core';
+import * as cfn from '@aws-cdk/aws-cloudformation';
+import * as iam from '@aws-cdk/aws-iam';
+import * as lambda from '@aws-cdk/aws-lambda';
+import { Construct, Duration, Token } from '@aws-cdk/core';
 import { ClusterResourceProvider } from './cluster-resource-provider';
+import * as path from 'path';
 import { CfnClusterProps } from './eks.generated';
 
 /**
