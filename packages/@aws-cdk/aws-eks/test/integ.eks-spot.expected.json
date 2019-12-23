@@ -1203,7 +1203,6 @@
       "Properties": {
         "MaxSize": "10",
         "MinSize": "1",
-        "DesiredCapacity": "10",
         "LaunchConfigurationName": {
           "Ref": "myClusterspotLaunchConfig6681F311"
         },
