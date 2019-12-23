@@ -57,7 +57,7 @@ export class KubernetesResource extends Construct {
     super(scope, id);
 
     if (!props.cluster._clusterResource) {
-      throw new Error(`Unable to define a KubernetesResource on a cluster without kubectl enabled`);
+      throw new Error(`Cannot define a KubernetesManifest resource on a cluster with kubectl disabled`);
     }
 
     const stack = Stack.of(this);
