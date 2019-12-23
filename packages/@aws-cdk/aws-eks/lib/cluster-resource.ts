@@ -1,9 +1,7 @@
 import * as cfn from '@aws-cdk/aws-cloudformation';
 import * as iam from '@aws-cdk/aws-iam';
-import * as lambda from '@aws-cdk/aws-lambda';
-import { Construct, Duration, Token } from '@aws-cdk/core';
+import { Construct, Token } from '@aws-cdk/core';
 import { ClusterResourceProvider } from './cluster-resource-provider';
-import * as path from 'path';
 import { CfnClusterProps } from './eks.generated';
 
 /**
@@ -32,7 +30,8 @@ export class ClusterResource extends Construct {
    * that gets administrator privilages on the cluster (`system:masters`), and
    * will be able to issue `kubectl` commands against it.
    */
-  public readonly creationRole: iam.IRole;
+  private readonly creationRole: iam.Role;
+  private readonly trustedPrincipals: string[] = [];
 
   constructor(scope: Construct, id: string, props: CfnClusterProps) {
     super(scope, id);
@@ -43,24 +42,54 @@ export class ClusterResource extends Construct {
       throw new Error(`"roleArn" is required`);
     }
 
-    provider.allowPassRole(props.roleArn);
+    // the role used to create the cluster. this becomes the administrator role
+    // of the cluster.
+    this.creationRole = new iam.Role(this, 'CreationRole', {
+      assumedBy: new iam.CompositePrincipal(...provider.roles.map(x => new iam.ArnPrincipal(x.roleArn)))
+    });
+
+    // the CreateCluster API will allow the cluster to assume this role, so we
+    // need to allow the lambda execution role to pass it.
+    this.creationRole.addToPolicy(new iam.PolicyStatement({
+      actions: [ 'iam:PassRole' ],
+      resources: [ props.roleArn ]
+    }));
+
+    // since we don't know the cluster name at this point, we must give this role star resource permissions
+    this.creationRole.addToPolicy(new iam.PolicyStatement({
+      actions: [ 'eks:CreateCluster', 'eks:DescribeCluster', 'eks:DeleteCluster', 'eks:UpdateClusterVersion', 'eks:UpdateClusterConfig' ],
+      resources: [ '*' ]
+    }));
 
     const resource = new cfn.CustomResource(this, 'Resource', {
       resourceType: ClusterResource.RESOURCE_TYPE,
       provider: provider.provider,
       properties: {
         Config: props,
-        // TODO: CreationRole:
-        // currently, the role that creates the cluster is the one we use for the
-        // provider lambda function but this is not good enough because it is shared
-        // between all clusters in this stack (since the provider is a singleton).
+        AssumeRoleArn: this.creationRole.roleArn
       }
     });
+
+    resource.node.addDependency(this.creationRole);
 
     this.ref = resource.ref;
     this.attrEndpoint = Token.asString(resource.getAtt('Endpoint'));
     this.attrArn = Token.asString(resource.getAtt('Arn'));
     this.attrCertificateAuthorityData = Token.asString(resource.getAtt('CertificateAuthorityData'));
-    this.creationRole = provider.role;
+  }
+
+  /**
+   * Returns the ARN of the cluster creation role and grants `trustedRole`
+   * permissions to assume this role.
+   */
+  public getCreationRoleArn(trustedRole: iam.IRole): string {
+    if (!this.trustedPrincipals.includes(trustedRole.roleArn)) {
+      this.creationRole.assumeRolePolicy?.addStatements(new iam.PolicyStatement({
+        actions: [ 'sts:AssumeRole' ],
+        principals: [ new iam.ArnPrincipal(trustedRole.roleArn) ]
+      }));
+      this.trustedPrincipals.push(trustedRole.roleArn);
+    }
+    return this.creationRole.roleArn;
   }
 }

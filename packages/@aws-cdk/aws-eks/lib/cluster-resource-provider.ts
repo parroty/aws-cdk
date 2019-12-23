@@ -1,9 +1,9 @@
 import { NestedStack } from '@aws-cdk/aws-cloudformation';
-import { PolicyStatement } from '@aws-cdk/aws-iam';
-import lambda = require('@aws-cdk/aws-lambda');
+import * as iam from '@aws-cdk/aws-iam';
+import * as lambda from '@aws-cdk/aws-lambda';
 import { Construct, Duration, Stack } from '@aws-cdk/core';
-import cr = require('@aws-cdk/custom-resources');
-import path = require('path');
+import * as cr from '@aws-cdk/custom-resources';
+import * as path from 'path';
 
 const HANDLER_DIR = path.join(__dirname, 'cluster-resource-handler');
 const HANDLER_RUNTIME = lambda.Runtime.NODEJS_12_X;
@@ -16,8 +16,7 @@ export class ClusterResourceProvider extends NestedStack {
   }
 
   public readonly provider: cr.Provider;
-
-  private readonly onEvent: lambda.Function;
+  public readonly roles: iam.IRole[];
 
   constructor(scope: Construct, id: string) {
     super(scope, id);
@@ -38,17 +37,6 @@ export class ClusterResourceProvider extends NestedStack {
       timeout: Duration.minutes(1)
     });
 
-    // since we don't know the cluster name at this point, we must give this role star resource permissions
-    onEvent.addToRolePolicy(new PolicyStatement({
-      actions: [ 'eks:CreateCluster', 'eks:DescribeCluster', 'eks:DeleteCluster', 'eks:UpdateClusterVersion', 'eks:UpdateClusterConfig' ],
-      resources: [ '*' ]
-    }));
-
-    isComplete.addToRolePolicy(new PolicyStatement({
-      actions: [ 'eks:DescribeCluster' ],
-      resources: [ '*' ]
-    }));
-
     this.provider = new cr.Provider(this, 'Provider', {
       onEventHandler: onEvent,
       isCompleteHandler: isComplete,
@@ -56,19 +44,9 @@ export class ClusterResourceProvider extends NestedStack {
       queryInterval: Duration.minutes(1)
     });
 
-    this.onEvent = onEvent;
-  }
-
-  public allowPassRole(roleArn: string) {
-    // the CreateCluster API will allow the cluster to assume this role, so we
-    // need to allow the lambda execution role to pass it.
-    this.onEvent.addToRolePolicy(new PolicyStatement({
-      actions: [ 'iam:PassRole' ],
-      resources: [ roleArn ]
-    }));
-  }
-
-  public get role() {
-    return this.onEvent.role!;
+    this.roles = [
+      onEvent.role!,
+      isComplete.role!,
+    ];
   }
 }

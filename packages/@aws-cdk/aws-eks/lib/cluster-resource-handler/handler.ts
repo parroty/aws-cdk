@@ -1,19 +1,32 @@
-// tslint:disable: max-line-length
-// tslint:disable: no-console
+// tslint:disable:no-console
+
 import { IsCompleteResponse, OnEventResponse } from '@aws-cdk/custom-resources/lib/provider-framework/types';
-import aws = require('aws-sdk');
+// eslint-disable-next-line import/no-extraneous-dependencies
+import * as aws from 'aws-sdk';
 
 export class ClusterResourceHandler {
   private readonly requestId: string;
+  private readonly logicalResourceId: string;
   private readonly physicalResourceId?: string;
   private readonly newProps: aws.EKS.CreateClusterRequest;
   private readonly oldProps: Partial<aws.EKS.CreateClusterRequest>;
 
   constructor(private readonly eks: EksClient, event: any) {
     this.requestId = event.RequestId;
+    this.logicalResourceId = event.LogicalResourceId;
     this.newProps = parseProps(event.ResourceProperties);
     this.oldProps = event.RequestType === 'Update' ? parseProps(event.OldResourceProperties) : { };
     this.physicalResourceId = event.PhysicalResourceId;
+
+    const roleToAssume = event.ResourceProperties.AssumeRoleArn;
+    if (!roleToAssume) {
+      throw new Error(`AssumeRoleArn must be provided`);
+    }
+
+    eks.configureAssumeRole({
+      RoleArn: roleToAssume,
+      RoleSessionName: `AWSCDK.EKSCluster.${event.RequestType}.${this.requestId}`
+    });
   }
 
   public get clusterName() {
@@ -34,8 +47,10 @@ export class ClusterResourceHandler {
       throw new Error('"roleArn" is required');
     }
 
+    const clusterName = this.newProps.name || `${this.logicalResourceId}-${this.requestId}`;
+
     const resp = await this.eks.createCluster({
-      name: `cluster-${this.requestId}`,
+      name: clusterName,
       ...this.newProps,
     });
 

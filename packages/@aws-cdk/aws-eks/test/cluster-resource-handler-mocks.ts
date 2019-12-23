@@ -1,36 +1,41 @@
-import sdk = require('aws-sdk');
+import * as sdk from 'aws-sdk';
 import { EksClient } from '../lib/cluster-resource-handler/handler';
 
-export let configureAssumeRoleRequest: sdk.STS.AssumeRoleRequest | undefined;
-export let createClusterRequest: sdk.EKS.CreateClusterRequest | undefined;
-export let describeClusterRequest: sdk.EKS.DescribeClusterRequest | undefined;
-export let deleteClusterRequest: sdk.EKS.DeleteClusterRequest | undefined;
-export let updateClusterConfigRequest: sdk.EKS.UpdateClusterConfigRequest | undefined;
-export let updateClusterVersionRequest: sdk.EKS.UpdateClusterVersionRequest | undefined;
-export let describeClusterResponseMockStatus: string | undefined;
-export let describeClusterExceptionCode: string | undefined;
-export let deleteClusterErrorCode: string | undefined;
+/**
+ * Request objects will be assigned when a request of the relevant type will be
+ * made.
+ */
+export let actualRequest: {
+  configureAssumeRoleRequest?: sdk.STS.AssumeRoleRequest;
+  createClusterRequest?: sdk.EKS.CreateClusterRequest;
+  describeClusterRequest?: sdk.EKS.DescribeClusterRequest;
+  deleteClusterRequest?: sdk.EKS.DeleteClusterRequest;
+  updateClusterConfigRequest?: sdk.EKS.UpdateClusterConfigRequest;
+  updateClusterVersionRequest?: sdk.EKS.UpdateClusterVersionRequest;
+} = { };
+
+/**
+ * Responses can be simulated by assigning values here.
+ */
+export let simulateResponse: {
+  describeClusterResponseMockStatus?: string;
+  deleteClusterErrorCode?: string;
+  describeClusterExceptionCode?: string;
+} = { };
 
 export function reset() {
-  configureAssumeRoleRequest = undefined;
-  deleteClusterErrorCode = undefined;
-  createClusterRequest = undefined;
-  describeClusterRequest = undefined;
-  deleteClusterRequest = undefined;
-  updateClusterVersionRequest = undefined;
-  updateClusterConfigRequest = undefined;
-  describeClusterResponseMockStatus = undefined;
-  describeClusterExceptionCode = undefined;
+  actualRequest = { };
+  simulateResponse = { };
 }
 
 export const client: EksClient = {
 
   configureAssumeRole: req => {
-    configureAssumeRoleRequest = req;
+    actualRequest.configureAssumeRoleRequest = req;
   },
 
   createCluster: async req => {
-    createClusterRequest = req;
+    actualRequest.createClusterRequest = req;
     return {
       cluster: {
         name: req.name,
@@ -44,10 +49,10 @@ export const client: EksClient = {
   },
 
   deleteCluster: async req => {
-    deleteClusterRequest = req;
-    if (deleteClusterErrorCode) {
+    actualRequest.deleteClusterRequest = req;
+    if (simulateResponse.deleteClusterErrorCode) {
       const e = new Error('mock error');
-      (e as any).code = deleteClusterErrorCode;
+      (e as any).code = simulateResponse.deleteClusterErrorCode;
       throw e;
     }
     return {
@@ -58,11 +63,11 @@ export const client: EksClient = {
   },
 
   describeCluster: async req => {
-    describeClusterRequest = req;
+    actualRequest.describeClusterRequest = req;
 
-    if (describeClusterExceptionCode) {
+    if (simulateResponse.describeClusterExceptionCode) {
       const e = new Error('mock exception');
-      (e as any).code = describeClusterExceptionCode;
+      (e as any).code = simulateResponse.describeClusterExceptionCode;
       throw e;
     }
 
@@ -74,18 +79,18 @@ export const client: EksClient = {
         arn: `arn:cluster-arn`,
         certificateAuthority: { data: 'certificateAuthority-data' },
         endpoint: 'http://endpoint',
-        status: describeClusterResponseMockStatus || 'ACTIVE'
+        status: simulateResponse.describeClusterResponseMockStatus || 'ACTIVE'
       }
     };
   },
 
   updateClusterConfig: async req => {
-    updateClusterConfigRequest = req;
+    actualRequest.updateClusterConfigRequest = req;
     return { };
   },
 
   updateClusterVersion: async req => {
-    updateClusterVersionRequest = req;
+    actualRequest.updateClusterVersionRequest = req;
     return { };
   }
 
@@ -98,6 +103,8 @@ export const MOCK_PROPS = {
     securityGroupIds: [ 'sg1', 'sg2', 'sg3' ]
   }
 };
+
+export const MOCK_ASSUME_ROLE_ARN = 'assume:role:arn';
 
 export function newRequest<T extends 'Create' | 'Update' | 'Delete'>(
     requestType: T,
@@ -113,11 +120,13 @@ export function newRequest<T extends 'Create' | 'Update' | 'Delete'>(
     ResponseURL: 'http://response-url',
     RequestType: requestType,
     OldResourceProperties: {
-      Config: oldProps
+      Config: oldProps,
+      AssumeRoleArn: MOCK_ASSUME_ROLE_ARN
     },
     ResourceProperties: {
       ServiceToken: 'boom',
-      Config: props
+      Config: props,
+      AssumeRoleArn: MOCK_ASSUME_ROLE_ARN
     }
   };
 }
