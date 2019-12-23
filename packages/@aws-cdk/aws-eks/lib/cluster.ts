@@ -566,6 +566,18 @@ export class Cluster extends Resource implements ICluster {
   }
 
   /**
+   * Defines a Helm chart in this cluster.
+   *
+   * @param id logical id of this chart.
+   * @param options options of this chart.
+   * @returns a `HelmChart` object
+   * @throws If `kubectlEnabled` is `false`
+   */
+  public addChart(id: string, options: HelmChartOptions) {
+    return new HelmChart(this, `chart-${id}`, { cluster: this, ...options });
+  }
+
+  /**
    * Opportunistically tag subnets with the required tags.
    *
    * If no subnets could be found (because this is an imported VPC), add a warning.
