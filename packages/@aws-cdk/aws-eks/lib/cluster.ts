@@ -6,6 +6,7 @@ import { CfnOutput, Construct, IResource, Resource, Stack, Tag, Token } from '@a
 import { AwsAuth } from './aws-auth';
 import { ClusterResource } from './cluster-resource';
 import { CfnCluster, CfnClusterProps } from './eks.generated';
+import { HelmChart, HelmChartOptions } from './helm-chart';
 import { KubernetesResource } from './k8s-resource';
 import { spotInterruptHandler } from './spot-interrupt-handler';
 import { renderUserData } from './user-data';
