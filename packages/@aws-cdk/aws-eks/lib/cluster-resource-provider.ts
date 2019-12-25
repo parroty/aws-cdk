@@ -18,7 +18,7 @@ export class ClusterResourceProvider extends NestedStack {
   public readonly provider: cr.Provider;
   public readonly roles: iam.IRole[];
 
-  constructor(scope: Construct, id: string) {
+  private constructor(scope: Construct, id: string) {
     super(scope, id);
 
     const onEvent = new lambda.Function(this, 'OnEventHandler', {
@@ -41,7 +41,7 @@ export class ClusterResourceProvider extends NestedStack {
       onEventHandler: onEvent,
       isCompleteHandler: isComplete,
       totalTimeout: Duration.hours(1),
-      queryInterval: Duration.minutes(1)
+      queryInterval: Duration.minutes(5)
     });
 
     this.roles = [

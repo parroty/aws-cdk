@@ -334,6 +334,8 @@ export class Cluster extends Resource implements ICluster {
       physicalName: props.clusterName,
     });
 
+    this.node.addWarning(`The @aws-cdk/aws-eks-legacy module will no longer be released as part of the AWS CDK starting March 1st, 2020. Please refer to https://github.com/aws/aws-cdk/issues/5544 for upgrade instructions`);
+
     const stack = Stack.of(this);
 
     this.vpc = props.vpc || new ec2.Vpc(this, 'DefaultVpc');

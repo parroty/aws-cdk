@@ -11,7 +11,11 @@
 ---
 <!--END STABILITY BANNER-->
 
-#### It is recommended to use @aws-cdk/aws-eks instead of this module.
+**This module is available for backwards compatibility purposes only ([details](https://github.com/aws/aws-cdk/pull/5540)). It will
+no longer be released with the CDK starting March 1st, 2020. See [issue
+#5544](https://github.com/aws/aws-cdk/issues/5544) for upgrade instructions.**
+
+---
 
 This construct library allows you to define [Amazon Elastic Container Service
 for Kubernetes (EKS)](https://aws.amazon.com/eks/) clusters programmatically.

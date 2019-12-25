@@ -1,6 +1,6 @@
 import * as cfn from '@aws-cdk/aws-cloudformation';
 import * as iam from '@aws-cdk/aws-iam';
-import { Construct, Token } from '@aws-cdk/core';
+import { ArnComponents, Construct, Stack, Token } from '@aws-cdk/core';
 import { ClusterResourceProvider } from './cluster-resource-provider';
 import { CfnClusterProps } from './eks.generated';
 
@@ -36,6 +36,7 @@ export class ClusterResource extends Construct {
   constructor(scope: Construct, id: string, props: CfnClusterProps) {
     super(scope, id);
 
+    const stack = Stack.of(this);
     const provider = ClusterResourceProvider.getOrCreate(this);
 
     if (!props.roleArn) {
@@ -55,10 +56,13 @@ export class ClusterResource extends Construct {
       resources: [ props.roleArn ]
     }));
 
-    // since we don't know the cluster name at this point, we must give this role star resource permissions
+    // if we know the cluster name, restrict the policy to only allow
+    // interacting with this specific cluster otherwise, we will have to grant
+    // this role to manage all clusters in the account.
+    const resourceArn = props.name ? stack.formatArn(clusterArnComponents(props.name)) : '*';
     this.creationRole.addToPolicy(new iam.PolicyStatement({
       actions: [ 'eks:CreateCluster', 'eks:DescribeCluster', 'eks:DeleteCluster', 'eks:UpdateClusterVersion', 'eks:UpdateClusterConfig' ],
-      resources: [ '*' ]
+      resources: [ resourceArn ]
     }));
 
     const resource = new cfn.CustomResource(this, 'Resource', {
@@ -84,12 +88,25 @@ export class ClusterResource extends Construct {
    */
   public getCreationRoleArn(trustedRole: iam.IRole): string {
     if (!this.trustedPrincipals.includes(trustedRole.roleArn)) {
-      this.creationRole.assumeRolePolicy?.addStatements(new iam.PolicyStatement({
+      if (!this.creationRole.assumeRolePolicy) {
+        throw new Error(`unexpected: cluster creation role must have trust policy`);
+      }
+
+      this.creationRole.assumeRolePolicy.addStatements(new iam.PolicyStatement({
         actions: [ 'sts:AssumeRole' ],
         principals: [ new iam.ArnPrincipal(trustedRole.roleArn) ]
       }));
+
       this.trustedPrincipals.push(trustedRole.roleArn);
     }
     return this.creationRole.roleArn;
   }
+}
+
+export function clusterArnComponents(clusterName: string): ArnComponents {
+  return {
+    service: 'eks',
+    resource: 'cluster',
+    resourceName: clusterName,
+  };
 }

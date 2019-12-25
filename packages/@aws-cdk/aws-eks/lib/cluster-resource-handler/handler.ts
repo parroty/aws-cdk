@@ -5,6 +5,16 @@ import { IsCompleteResponse, OnEventResponse } from '@aws-cdk/custom-resources/l
 import * as aws from 'aws-sdk';
 
 export class ClusterResourceHandler {
+
+  public get clusterName() {
+    if (!this.physicalResourceId) {
+      throw new Error(`Cannot determie cluster name without physical resource ID`);
+    }
+
+    return this.physicalResourceId;
+  }
+
+  private readonly requestType: string;
   private readonly requestId: string;
   private readonly logicalResourceId: string;
   private readonly physicalResourceId?: string;
@@ -27,22 +37,36 @@ export class ClusterResourceHandler {
       RoleArn: roleToAssume,
       RoleSessionName: `AWSCDK.EKSCluster.${event.RequestType}.${this.requestId}`
     });
+
+    this.requestType = event.RequestType;
   }
 
-  public get clusterName() {
-    if (!this.physicalResourceId) {
-      throw new Error(`Cannot determie cluster name without physical resource ID`);
+  public onEvent() {
+    switch (this.requestType) {
+      case 'Create': return this.onCreate();
+      case 'Update': return this.onUpdate();
+      case 'Delete': return this.onDelete();
     }
 
-    return this.physicalResourceId;
+    throw new Error(`Invalid request type ${this.requestType}`);
+  }
+
+  public isComplete() {
+    switch (this.requestType) {
+      case 'Create': return this.isCreateComplete();
+      case 'Update': return this.isUpdateComplete();
+      case 'Delete': return this.isDeleteComplete();
+    }
+
+    throw new Error(`Invalid request type ${this.requestType}`);
   }
 
   // ------
   // CREATE
   // ------
 
-  public async onCreate(): Promise<OnEventResponse> {
-    console.log('createCluster:', JSON.stringify(this.newProps, undefined, 2));
+  private async onCreate(): Promise<OnEventResponse> {
+    console.log('onCreate: creating cluster with options:', JSON.stringify(this.newProps, undefined, 2));
     if (!this.newProps.roleArn) {
       throw new Error('"roleArn" is required');
     }
@@ -50,16 +74,20 @@ export class ClusterResourceHandler {
     const clusterName = this.newProps.name || `${this.logicalResourceId}-${this.requestId}`;
 
     const resp = await this.eks.createCluster({
-      name: clusterName,
       ...this.newProps,
+      name: clusterName,
     });
 
+    if (!resp.cluster) {
+      throw new Error(`Error when trying to create cluster ${clusterName}: CreateCluster returned without cluster information`);
+    }
+
     return {
-      PhysicalResourceId: resp.cluster!.name
+      PhysicalResourceId: resp.cluster.name
     };
   }
 
-  public async isCreateComplete() {
+  private async isCreateComplete() {
     return this.isActive();
   }
 
@@ -67,8 +95,8 @@ export class ClusterResourceHandler {
   // DELETE
   // ------
 
-  public async onDelete(): Promise<OnEventResponse> {
-    console.log(`deleting cluster ${this.clusterName}`);
+  private async onDelete(): Promise<OnEventResponse> {
+    console.log(`onDelete: deleting cluster ${this.clusterName}`);
     try {
       await this.eks.deleteCluster({ name: this.clusterName });
     } catch (e) {
@@ -83,8 +111,8 @@ export class ClusterResourceHandler {
     };
   }
 
-  public async isDeleteComplete(): Promise<IsCompleteResponse> {
-    console.log(`waiting for cluster ${this.clusterName} to be deleted`);
+  private async isDeleteComplete(): Promise<IsCompleteResponse> {
+    console.log(`isDeleteComplete: waiting for cluster ${this.clusterName} to be deleted`);
 
     try {
       const resp = await this.eks.describeCluster({ name: this.clusterName });
@@ -108,15 +136,23 @@ export class ClusterResourceHandler {
   // UPDATE
   // ------
 
-  public async onUpdate() {
+  private async onUpdate() {
     const updates = analyzeUpdate(this.oldProps, this.newProps);
-
-    console.log(updates);
+    console.log(`onUpdate:`, JSON.stringify({ updates }, undefined, 2));
 
     // if there is an update that requires replacement, go ahead and just create
     // a new cluster with the new config. The old cluster will automatically be
     // deleted by cloudformation upon success.
     if (updates.replaceName || updates.replaceRole || updates.replaceVpc) {
+
+      // if we are replacing this cluster and the cluster has an explicit
+      // physical name, the creation of the new cluster will fail with "there is
+      // already a cluster with that name". this is a common behavior for
+      // CloudFormation resources that support specifying a physical name.
+      if (this.oldProps.name === this.newProps.name && this.oldProps.name) {
+        throw new Error(`Cannot replace cluster "${this.oldProps.name}" since it has an explicit physical name. Either rename the cluster or remove the "name" configuration`);
+      }
+
       return await this.onCreate();
     }
 
@@ -141,15 +177,18 @@ export class ClusterResourceHandler {
     return;
   }
 
-  public async isUpdateComplete() {
+  private async isUpdateComplete() {
+    console.log(`isUpdateComplete`);
     return this.isActive();
   }
 
   private async updateClusterVersion(newVersion: string) {
+    console.log(`updating cluster version to ${newVersion}`);
+
     // update-cluster-version will fail if we try to update to the same version,
     // so skip in this case.
-    const cluster = (await this.eks.describeCluster({ name: this.clusterName })).cluster!;
-    if (cluster.version === newVersion) {
+    const cluster = (await this.eks.describeCluster({ name: this.clusterName })).cluster;
+    if (cluster?.version === newVersion) {
       console.log(`cluster already at version ${cluster.version}, skipping version update`);
       return;
     }
@@ -161,20 +200,26 @@ export class ClusterResourceHandler {
     console.log('waiting for cluster to become ACTIVE');
     const resp = await this.eks.describeCluster({ name: this.clusterName });
     console.log('describeCluster result:', JSON.stringify(resp, undefined, 2));
-    const cluster = resp.cluster!;
-    if (cluster.status !== 'ACTIVE') {
-      return { IsComplete: false };
-    }
+    const cluster = resp.cluster;
 
-    return {
-      IsComplete: true,
-      Data: {
-        Name: cluster.name,
-        Endpoint: cluster.endpoint,
-        Arn: cluster.arn,
-        CertificateAuthorityData: cluster.certificateAuthority && cluster.certificateAuthority.data
-      }
-    };
+    // if cluster is undefined (shouldnt happen) or status is not ACTIVE, we are
+    // not complete. note that the custom resource provider framework forbids
+    // returning attributes (Data) if isComplete is false.
+    if (cluster?.status !== 'ACTIVE') {
+      return {
+        IsComplete: false
+      };
+    } else {
+      return {
+        IsComplete: true,
+        Data: {
+          Name: cluster.name,
+          Endpoint: cluster.endpoint,
+          Arn: cluster.arn,
+          CertificateAuthorityData: cluster.certificateAuthority?.data
+        }
+      };
+    }
   }
 }
 
@@ -188,7 +233,7 @@ export interface EksClient {
 }
 
 function parseProps(props: any): aws.EKS.CreateClusterRequest {
-  return (props && props.Config) || { };
+  return props?.Config ?? { };
 }
 
 interface UpdateMap {

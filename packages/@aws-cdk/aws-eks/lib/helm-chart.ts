@@ -119,7 +119,7 @@ class HelmResourceProvider extends NestedStack {
    */
   public readonly role: iam.IRole;
 
-  constructor(scope: Construct, id: string) {
+  private constructor(scope: Construct, id: string) {
     super(scope, id);
 
     const handler = new lambda.Function(this, 'Handler', {

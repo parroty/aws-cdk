@@ -1,4 +1,3 @@
-
 export interface Mapping {
   /**
    * The user name within Kubernetes to map to the IAM role.

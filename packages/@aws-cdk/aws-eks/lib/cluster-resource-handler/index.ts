@@ -35,18 +35,10 @@ function getEksClient() {
 
 export async function onEvent(event: AWSLambda.CloudFormationCustomResourceEvent) {
   const provider = new ClusterResourceHandler(defaultEksClient, event);
-  switch (event.RequestType) {
-    case 'Create': return provider.onCreate();
-    case 'Update': return provider.onUpdate();
-    case 'Delete': return provider.onDelete();
-  }
+  return provider.onEvent();
 }
 
 export async function isComplete(event: AWSLambda.CloudFormationCustomResourceEvent): Promise<IsCompleteResponse> {
   const provider = new ClusterResourceHandler(defaultEksClient, event);
-  switch (event.RequestType) {
-    case 'Create': return provider.isCreateComplete();
-    case 'Update': return provider.isUpdateComplete();
-    case 'Delete': return provider.isDeleteComplete();
-  }
+  return provider.isComplete();
 }
