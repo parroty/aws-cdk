@@ -1,6 +1,6 @@
 import * as cfn from '@aws-cdk/aws-cloudformation';
 import * as iam from '@aws-cdk/aws-iam';
-import { ArnComponents, Construct, Stack, Token } from '@aws-cdk/core';
+import { ArnComponents, Construct, Lazy, Stack, Token } from '@aws-cdk/core';
 import { ClusterResourceProvider } from './cluster-resource-provider';
 import { CfnClusterProps } from './eks.generated';
 
@@ -58,8 +58,15 @@ export class ClusterResource extends Construct {
 
     // if we know the cluster name, restrict the policy to only allow
     // interacting with this specific cluster otherwise, we will have to grant
-    // this role to manage all clusters in the account.
-    const resourceArn = props.name ? stack.formatArn(clusterArnComponents(props.name)) : '*';
+    // this role to manage all clusters in the account. this must be lazy since
+    // `props.name` may contain a lazy value that conditionally resolves to a
+    // physical name.
+    const resourceArn = Lazy.stringValue({
+      produce: () => stack.resolve(props.name)
+        ? stack.formatArn(clusterArnComponents(stack.resolve(props.name)))
+        : '*'
+    });
+
     this.creationRole.addToPolicy(new iam.PolicyStatement({
       actions: [ 'eks:CreateCluster', 'eks:DescribeCluster', 'eks:DeleteCluster', 'eks:UpdateClusterVersion', 'eks:UpdateClusterConfig' ],
       resources: [ resourceArn ]
